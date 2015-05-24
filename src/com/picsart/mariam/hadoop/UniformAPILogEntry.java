@@ -141,6 +141,9 @@ public class UniformAPILogEntry  implements Writable {
             throw new NullPointerException("Request type cannot be null");
     }
 
+    public UniformAPILogEntry() {
+        this.reqType = "GET";
+    }
 
     public void write(DataOutput dataOutput) throws IOException{
         dataOutput.writeInt(reqType.length());

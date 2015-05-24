@@ -55,7 +55,7 @@ public class APILogParser {
 
             return logEntry;
         } catch (Exception e) {
-            LOG.error("Error in parser", e);
+            LOG.error("Error in parser, line = " + line, e);
             throw new Exception(e);
         }
     }
