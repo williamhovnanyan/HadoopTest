@@ -14,6 +14,7 @@ import org.apache.hadoop.mapreduce.lib.output.FileOutputFormat;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
+import java.util.HashMap;
 import java.util.Iterator;
 
 /**
@@ -66,13 +67,16 @@ public class APILogProcessor {
         }
 
         private Text getAVGProcessingTimePerURLKey(UniformAPILogEntry logEntry) {
-            String reqURL = logEntry.getRequestURL() != null ? logEntry.getRequestURL() : UNDEFINED;
+            String reqURL = logEntry.getRequestURL() != null ? logEntry.getRequestURL()
+                    .replaceAll("/[0-9a-zA-Z,^*%_-]+.json", "")
+                    : UNDEFINED;
 
             return new Text(PROCESSING_KEYS.AVERAGE_PROCESSING_TIME_PER_REQUEST + DELIMITER + reqURL);
         }
 
         private Text getStatusCodePerRequestKey(UniformAPILogEntry logEntry) {
-            String reqURL = logEntry.getRequestURL() != null ? logEntry.getRequestURL().replaceAll("[0-9]+.json", "") : UNDEFINED;
+            String reqURL = logEntry.getRequestURL() != null ? logEntry.getRequestURL()
+                    .replaceAll("/[0-9a-zA-Z,^*%_-]+.json", "") : UNDEFINED;
 
             return new Text(PROCESSING_KEYS.STATUS_CODE_PER_REQUEST + DELIMITER + reqURL);
         }
@@ -106,14 +110,22 @@ public class APILogProcessor {
         private void calculateStatusCodePerRequest(String reqURL, Iterable<UniformAPILogEntry> values, Context context) throws IOException, InterruptedException {
             LOG.info("In calculateStatusCodePerRequest, url = " + reqURL);
             Iterator<UniformAPILogEntry> it = values.iterator();
+            HashMap<Integer, Integer> statusCodeMap = new HashMap<Integer, Integer>();
 
-            Integer count = 0;
             while (it.hasNext()) {
-                it.next();
-                count++;
+                Integer statusCode = it.next().getStatusCode();
+                if(statusCodeMap.containsKey(statusCode)) {
+                    statusCodeMap.put(statusCode, statusCodeMap.get(statusCode) + 1);
+                }
+                else {
+                    statusCodeMap.put(statusCode, 1);
+                }
             }
-            context.write(new Text(PROCESSING_KEYS.STATUS_CODE_PER_REQUEST.toString() + DELIMITER + reqURL),
-                    new Text(count.toString()));
+
+            for (Integer statusCode : statusCodeMap.keySet()) {
+                context.write(new Text(PROCESSING_KEYS.STATUS_CODE_PER_REQUEST.toString() + DELIMITER + reqURL + DELIMITER + statusCode),
+                        new Text(statusCodeMap.get(statusCode).toString()));
+            }
         }
 
         private void calculateAverageProcessingTimePerRequest(String reqURL, Iterable<UniformAPILogEntry> values, Context context) throws IOException, InterruptedException {
@@ -147,8 +159,16 @@ public class APILogProcessor {
         FileSystem fs = FileSystem.get(conf);
         FileStatus[] fileStatuses = fs.listStatus(new Path(args[0]));
 
+        int dirCounter = 0;
         for (FileStatus fileStatus : fileStatuses) {
-            FileInputFormat.addInputPath(job, fileStatus.getPath());
+            if(fileStatus.isDirectory()) {
+                FileInputFormat.addInputPath(job, fileStatus.getPath());
+                dirCounter++;
+            }
+        }
+
+        if(dirCounter == 0) {
+            FileInputFormat.addInputPath(job, new Path(args[0]));
         }
 
         fs.delete(new Path(args[1]), true);
